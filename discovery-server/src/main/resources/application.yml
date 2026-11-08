@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: discovery-server
+server:
+  port: ${SERVER_PORT:8761}
+eureka:
+  instance:
+    hostname: ${DISCOVERY_HOST:localhost}
+  client:
+    register-with-eureka: false
+    fetch-registry: false
+    service-url:
+      defaultZone: http://${eureka.instance.hostname}:${server.port}/eureka/
+  server:
+    enable-self-preservation: false
+    response-cache-update-interval-ms: 1000
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+logging:
+  structured:
+    format:
+      console: logstash

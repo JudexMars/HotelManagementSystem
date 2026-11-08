@@ -1,0 +1,79 @@
+x-app: &app
+  init: true
+  restart: "no"
+  mem_limit: 384m
+  read_only: true
+  tmpfs:
+    - /tmp
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  healthcheck: &health
+    test: ["CMD-SHELL", "curl --fail --silent http://localhost:$${SERVER_PORT}/actuator/health/readiness > /dev/null"]
+    interval: 5s
+    timeout: 3s
+    start_period: 60s
+    retries: 24
+
+services:
+  discovery-server:
+    <<: *app
+    build:
+      context: .
+      target: discovery-server
+    environment:
+      SERVER_PORT: 8761
+      DISCOVERY_HOST: discovery-server
+    ports:
+      - "127.0.0.1:${DISCOVERY_PORT:-8761}:8761"
+
+  hotel-service:
+    <<: *app
+    mem_limit: 768m
+    build:
+      context: .
+      target: hotel-service
+    environment:
+      SERVER_PORT: 8082
+      APP_SECURITY_JWK_SET_URI: http://booking-service:8081/api/users/jwks
+      EUREKA_URL: http://discovery-server:8761/eureka/
+      SPRING_PROFILES_ACTIVE: dev,demo
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+
+  booking-service:
+    <<: *app
+    mem_limit: 768m
+    build:
+      context: .
+      target: booking-service
+    environment:
+      SERVER_PORT: 8081
+      EUREKA_URL: http://discovery-server:8761/eureka/
+      SPRING_PROFILES_ACTIVE: dev,demo
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+
+  api-gateway:
+    <<: *app
+    build:
+      context: .
+      target: api-gateway
+    environment:
+      SERVER_PORT: 8080
+      APP_SECURITY_JWK_SET_URI: http://booking-service:8081/api/users/jwks
+      EUREKA_URL: http://discovery-server:8761/eureka/
+      SPRING_PROFILES_ACTIVE: dev,demo
+    ports:
+      - "127.0.0.1:${GATEWAY_PORT:-8080}:8080"
+    depends_on:
+      hotel-service:
+        condition: service_healthy
+      booking-service:
+        condition: service_healthy
+    healthcheck:
+      <<: *health
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8080/actuator/health/readiness > /dev/null && curl --fail --silent http://localhost:8080/health/hotel > /dev/null && curl --fail --silent http://localhost:8080/health/booking > /dev/null"]
